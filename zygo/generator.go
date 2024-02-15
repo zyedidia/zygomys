@@ -194,7 +194,7 @@ func (gen *Generator) GenerateDef(args []Sexp, opname string) error {
 		switch opname {
 		case "def":
 			instr = PopStackPutEnvInstr{lhs}
-		case "set":
+		case "var":
 			Q("GenerateDef is doing set with UpdateInstr: lhs = '%s'", lhs.SexpString(nil))
 			instr = UpdateInstr{lhs}
 		default:
@@ -611,8 +611,8 @@ func (gen *Generator) GenerateCallBySymbol(sym *SexpSymbol, args []Sexp, orig Se
 		return gen.GenerateInclude(args)
 	case "for":
 		return gen.GenerateForLoop(args)
-	case "set":
-		return gen.GenerateDef(args, "set")
+	case "var":
+		return gen.GenerateDef(args, "var")
 	case "break":
 		return gen.GenerateBreak(args)
 	case "continue":

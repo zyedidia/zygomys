@@ -112,7 +112,7 @@ func (env *Zlisp) Prefix(op string, bp int) *InfixOp {
 // processing.
 func (env *Zlisp) Assignment(op string, bp int) *InfixOp {
 	oper := env.MakeSymbol(op)
-	operSet := env.MakeSymbol("set")
+	operSet := env.MakeSymbol("var")
 	iop := &InfixOp{
 		Sym: oper,
 		Bp:  bp,
