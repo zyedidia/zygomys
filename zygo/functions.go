@@ -943,7 +943,6 @@ func SandboxSafeFunctions() map[string]ZlispUserFunction {
 	return MergeFuncMap(
 		CoreFunctions(),
 		StrFunctions(),
-		EncodingFunctions(),
 	)
 }
 
@@ -952,7 +951,6 @@ func AllBuiltinFunctions() map[string]ZlispUserFunction {
 	return MergeFuncMap(
 		CoreFunctions(),
 		StrFunctions(),
-		EncodingFunctions(),
 		SystemFunctions(),
 		ReflectionFunctions(),
 	)
@@ -1067,22 +1065,10 @@ func StrFunctions() map[string]ZlispUserFunction {
 
 }
 
-func EncodingFunctions() map[string]ZlispUserFunction {
-	return map[string]ZlispUserFunction{
-		"json":      JsonFunction("json"),
-		"unjson":    JsonFunction("unjson"),
-		"msgpack":   JsonFunction("msgpack"),
-		"unmsgpack": JsonFunction("unmsgpack"),
-		"gob":       GobEncodeFunction,
-		"msgmap":    ConstructorFunction("msgmap"),
-	}
-}
-
 func ReflectionFunctions() map[string]ZlispUserFunction {
 	return map[string]ZlispUserFunction{
-		"methodls":              GoMethodListFunction,
-		"_method":               CallGoMethodFunction,
-		"registerDemoFunctions": ScriptFacingRegisterDemoStructs,
+		"methodls": GoMethodListFunction,
+		"_method":  CallGoMethodFunction,
 	}
 }
 
@@ -1091,13 +1077,9 @@ func SystemFunctions() map[string]ZlispUserFunction {
 		"source":    SourceFileFunction,
 		"togo":      ToGoFunction,
 		"fromgo":    FromGoFunction,
-		"dump":      GoonDumpFunction,
 		"slurpf":    SlurpfileFunction,
 		"writef":    WriteToFileFunction("writef"),
 		"save":      WriteToFileFunction("save"),
-		"bload":     ReadGreenpackFromFileFunction,
-		"bsave":     WriteShadowGreenpackToFileFunction("bsave"),
-		"greenpack": WriteShadowGreenpackToFileFunction("greenpack"),
 		"owritef":   WriteToFileFunction("owritef"),
 		"system":    SystemFunction,
 		"exit":      ExitFunction,
@@ -1749,11 +1731,6 @@ func (env *Zlisp) SubstituteRHS(args []Sexp) ([]Sexp, error) {
 		}
 	}
 	return args, nil
-}
-
-func ScriptFacingRegisterDemoStructs(env *Zlisp, name string, args []Sexp) (Sexp, error) {
-	RegisterDemoStructs()
-	return SexpNull, nil
 }
 
 func GetEnvFunction(name string) ZlispUserFunction {

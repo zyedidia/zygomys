@@ -25,7 +25,6 @@ import (
 // The repl will automatically do a (defmap record)
 // for each record defined in the registry. e.g.
 // for snoopy, hornet, hellcat, etc.
-//
 var GoStructRegistry GoStructRegistryType
 
 // the registry type
@@ -222,8 +221,8 @@ func NewRegisteredType(f MakeGoStructFunc) *RegisteredType {
 
 // builtin known Go Structs
 // NB these are used to test the functionality of the
-//    Go integration.
 //
+//	Go integration.
 func init() {
 	GoStructRegistry = GoStructRegistryType{
 		Registry: make(map[string]*RegisteredType),
@@ -438,35 +437,4 @@ func (gsr *GoStructRegistryType) GetOrCreateSliceType(rt *RegisteredType) *Regis
 		gsr.RegisterUserdef(sliceRt, false, sliceName)
 	}
 	return sliceRt
-}
-
-func RegisterDemoStructs() {
-
-	gsr := &GoStructRegistry
-
-	// demo and user defined structs
-	gsr.RegisterUserdef(&RegisteredType{GenDefMap: true, Factory: func(env *Zlisp, h *SexpHash) (interface{}, error) {
-		return &Event{}, nil
-	}}, true, "eventdemo")
-	gsr.RegisterUserdef(&RegisteredType{GenDefMap: true, Factory: func(env *Zlisp, h *SexpHash) (interface{}, error) {
-		return &Person{}, nil
-	}}, true, "persondemo")
-	gsr.RegisterUserdef(&RegisteredType{GenDefMap: true, Factory: func(env *Zlisp, h *SexpHash) (interface{}, error) {
-		return &Snoopy{}, nil
-	}}, true, "snoopy")
-	gsr.RegisterUserdef(&RegisteredType{GenDefMap: true, Factory: func(env *Zlisp, h *SexpHash) (interface{}, error) {
-		return &Hornet{}, nil
-	}}, true, "hornet")
-	gsr.RegisterUserdef(&RegisteredType{GenDefMap: true, Factory: func(env *Zlisp, h *SexpHash) (interface{}, error) {
-		return &Hellcat{}, nil
-	}}, true, "hellcat")
-	gsr.RegisterUserdef(&RegisteredType{GenDefMap: true, Factory: func(env *Zlisp, h *SexpHash) (interface{}, error) {
-		return &Weather{}, nil
-	}}, true, "weather")
-	gsr.RegisterUserdef(&RegisteredType{GenDefMap: true, Factory: func(env *Zlisp, h *SexpHash) (interface{}, error) {
-		return &Plane{}, nil
-	}}, true, "plane")
-	gsr.RegisterUserdef(&RegisteredType{GenDefMap: true, Factory: func(env *Zlisp, h *SexpHash) (interface{}, error) {
-		return &SetOfPlanes{}, nil
-	}}, true, "setOfPlanes")
 }

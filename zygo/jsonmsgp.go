@@ -1,10 +1,7 @@
 package zygo
 
 import (
-	"bytes"
 	"fmt"
-	"github.com/shurcooL/go-goon"
-	"github.com/ugorji/go/codec"
 	"reflect"
 	"sort"
 	"strings"
@@ -17,247 +14,47 @@ type TypeCheckable interface {
 }
 
 /*
- Conversion map
+	Conversion map
 
- Go map[string]interface{}  <--(1)--> lisp
-   ^                                  ^ |
-   |                                 /  |
-  (2)   ------------ (4) -----------/  (5)
-   |   /                                |
-   V  V                                 V
- msgpack <--(3)--> go struct, strongly typed
+	Go map[string]interface{}  <--(1)--> lisp
+	  ^                                  ^ |
+	  |                                 /  |
+	 (2)   ------------ (4) -----------/  (5)
+	  |   /                                |
+	  V  V                                 V
+	msgpack <--(3)--> go struct, strongly typed
 
 (1) we provide these herein; see jsonmsgp_test.go too.
-     (a) SexpToGo()
-     (b) GoToSexp()
+
+	(a) SexpToGo()
+	(b) GoToSexp()
+
 (2) provided by ugorji/go/codec; see examples also herein
-     (a) MsgpackToGo() / JsonToGo()
-     (b) GoToMsgpack() / GoToJson()
+
+	(a) MsgpackToGo() / JsonToGo()
+	(b) GoToMsgpack() / GoToJson()
+
 (3) provided by tinylib/msgp, and by ugorji/go/codec
-     by using pre-compiled or just decoding into an instance
-     of the struct.
+
+	by using pre-compiled or just decoding into an instance
+	of the struct.
+
 (4) see herein
-     (a) SexpToMsgpack() and SexpToJson()
-     (b) MsgpackToSexp(); uses (4) = (2) + (1)
+
+	(a) SexpToMsgpack() and SexpToJson()
+	(b) MsgpackToSexp(); uses (4) = (2) + (1)
+
 (5) The SexpToGoStructs() and ToGoFunction() in this
-    file provide the capability of marshaling an
-    s-expression to a Go-struct that has been
-    registered to be associated with a named
-    hash map using (defmap). See repl/gotypereg.go
-    to add your Go-struct constructor. From
-    the prompt, the (togo) function instantiates
-    a 'shadow' Go-struct whose data matches
-    that configured in the record.
+
+	file provide the capability of marshaling an
+	s-expression to a Go-struct that has been
+	registered to be associated with a named
+	hash map using (defmap). See repl/gotypereg.go
+	to add your Go-struct constructor. From
+	the prompt, the (togo) function instantiates
+	a 'shadow' Go-struct whose data matches
+	that configured in the record.
 */
-func JsonFunction(name string) ZlispUserFunction {
-	return func(env *Zlisp, _ string, args []Sexp) (Sexp, error) {
-		if len(args) != 1 {
-			return SexpNull, WrongNargs
-		}
-
-		switch name {
-		case "json":
-			str := SexpToJson(args[0])
-			return &SexpRaw{Val: []byte(str)}, nil
-		case "unjson":
-			raw, isRaw := args[0].(*SexpRaw)
-			if !isRaw {
-				return SexpNull, fmt.Errorf("unjson error: SexpRaw required, but we got %T instead.", args[0])
-			}
-			return JsonToSexp([]byte(raw.Val), env)
-		case "msgpack":
-			by, _ := SexpToMsgpack(args[0])
-			return &SexpRaw{Val: []byte(by)}, nil
-		case "unmsgpack":
-			raw, isRaw := args[0].(*SexpRaw)
-			if !isRaw {
-				return SexpNull, fmt.Errorf("unmsgpack error: SexpRaw required, but we got %T instead.", args[0])
-			}
-			return MsgpackToSexp([]byte(raw.Val), env)
-		default:
-			return SexpNull, fmt.Errorf("JsonFunction error: unrecognized function name: '%s'", name)
-		}
-	}
-}
-
-// json -> sexp. env is needed to handle symbols correctly
-func JsonToSexp(json []byte, env *Zlisp) (Sexp, error) {
-	iface, err := JsonToGo(json)
-	if err != nil {
-		return nil, err
-	}
-	return GoToSexp(iface, env)
-}
-
-// sexp -> json
-func SexpToJson(exp Sexp) string {
-	switch e := exp.(type) {
-	case *SexpHash:
-		return e.jsonHashHelper()
-	case *SexpArray:
-		return e.jsonArrayHelper()
-	case *SexpSymbol:
-		return `"` + e.name + `"`
-	default:
-		return exp.SexpString(nil)
-	}
-}
-
-func (hash *SexpHash) jsonHashHelper() string {
-	str := fmt.Sprintf(`{"Atype":"%s", `, hash.TypeName)
-
-	ko := []string{}
-	n := len(hash.KeyOrder)
-	if n == 0 {
-		return str[:len(str)-2] + "}"
-	}
-
-	for _, key := range hash.KeyOrder {
-		keyst := key.SexpString(nil)
-		ko = append(ko, keyst)
-		val, err := hash.HashGet(nil, key)
-		if err == nil {
-			str += `"` + keyst + `":`
-			str += string(SexpToJson(val)) + `, `
-		} else {
-			panic(err)
-		}
-	}
-
-	str += `"zKeyOrder":[`
-	for _, key := range ko {
-		str += `"` + key + `", `
-	}
-	if n > 0 {
-		str = str[:len(str)-2]
-	}
-	str += "]}"
-
-	//VPrintf("\n\n final ToJson() str = '%s'\n", str)
-	return str
-}
-
-func (arr *SexpArray) jsonArrayHelper() string {
-	if len(arr.Val) == 0 {
-		return "[]"
-	}
-
-	str := "[" + SexpToJson(arr.Val[0])
-	for _, sexp := range arr.Val[1:] {
-		str += ", " + SexpToJson(sexp)
-	}
-	return str + "]"
-}
-
-type msgpackHelper struct {
-	initialized bool
-	mh          codec.MsgpackHandle
-	jh          codec.JsonHandle
-}
-
-func (m *msgpackHelper) init() {
-	if m.initialized {
-		return
-	}
-
-	m.mh.MapType = reflect.TypeOf(map[string]interface{}(nil))
-
-	// configure extensions
-	// e.g. for msgpack, define functions and enable Time support for tag 1
-	//does this make a differenece? m.mh.AddExt(reflect.TypeOf(time.Time{}), 1, timeEncExt, timeDecExt)
-	m.mh.RawToString = true
-	m.mh.WriteExt = true
-	m.mh.SignedInteger = true
-	m.mh.Canonical = true // sort maps before writing them
-
-	// JSON
-	m.jh.MapType = reflect.TypeOf(map[string]interface{}(nil))
-	m.jh.SignedInteger = true
-	m.jh.Canonical = true // sort maps before writing them
-
-	m.initialized = true
-}
-
-var msgpHelper msgpackHelper
-
-func init() {
-	msgpHelper.init()
-}
-
-// translate to sexp -> json -> go -> msgpack
-// returns both the msgpack []bytes and the go intermediary
-func SexpToMsgpack(exp Sexp) ([]byte, interface{}) {
-
-	json := []byte(SexpToJson(exp))
-	iface, err := JsonToGo(json)
-	panicOn(err)
-	by, err := GoToMsgpack(iface)
-	panicOn(err)
-	return by, iface
-}
-
-// json -> go
-func JsonToGo(json []byte) (interface{}, error) {
-	var iface interface{}
-
-	decoder := codec.NewDecoderBytes(json, &msgpHelper.jh)
-	err := decoder.Decode(&iface)
-	if err != nil {
-		panic(err)
-	}
-	//VPrintf("\n decoded type : %T\n", iface)
-	//VPrintf("\n decoded value: %#v\n", iface)
-	return iface, nil
-}
-
-func GoToMsgpack(iface interface{}) ([]byte, error) {
-	var w bytes.Buffer
-	enc := codec.NewEncoder(&w, &msgpHelper.mh)
-	err := enc.Encode(&iface)
-	if err != nil {
-		return nil, err
-	}
-	return w.Bytes(), nil
-}
-
-// go -> json
-func GoToJson(iface interface{}) []byte {
-	var w bytes.Buffer
-	encoder := codec.NewEncoder(&w, &msgpHelper.jh)
-	err := encoder.Encode(&iface)
-	if err != nil {
-		panic(err)
-	}
-	return w.Bytes()
-}
-
-// msgpack -> sexp
-func MsgpackToSexp(msgp []byte, env *Zlisp) (Sexp, error) {
-	iface, err := MsgpackToGo(msgp)
-	if err != nil {
-		return nil, fmt.Errorf("MsgpackToSexp failed at MsgpackToGo step: '%s", err)
-	}
-	sexp, err := GoToSexp(iface, env)
-	if err != nil {
-		return nil, fmt.Errorf("MsgpackToSexp failed at GoToSexp step: '%s", err)
-	}
-	return sexp, nil
-}
-
-// msgpack -> go
-func MsgpackToGo(msgp []byte) (interface{}, error) {
-
-	var iface interface{}
-	dec := codec.NewDecoderBytes(msgp, &msgpHelper.mh)
-	err := dec.Decode(&iface)
-	if err != nil {
-		return nil, err
-	}
-
-	//fmt.Printf("\n decoded type : %T\n", iface)
-	//fmt.Printf("\n decoded value: %#v\n", iface)
-	return iface, nil
-}
 
 // convert iface, which will typically be map[string]interface{},
 // into an s-expression
@@ -404,8 +201,8 @@ func makeSortedSlicesFromMap(m map[string]interface{}) ([]string, []interface{})
 // This is mostly just an exercise in type conversion.
 //
 // on first entry, dedup can be nil. We use it to write the
-//  same pointer for a SexpHash used in more than one place.
 //
+//	same pointer for a SexpHash used in more than one place.
 func SexpToGo(sexp Sexp, env *Zlisp, dedup map[*SexpHash]interface{}) (result interface{}) {
 
 	cacheHit := false
@@ -591,15 +388,6 @@ func FromGoFunction(env *Zlisp, name string, args []Sexp) (Sexp, error) {
 	}
 	return GoToSexp(sr.Val.Interface(), env)
 
-	return SexpNull, nil
-}
-
-func GoonDumpFunction(env *Zlisp, name string, args []Sexp) (Sexp, error) {
-	if len(args) != 1 {
-		return SexpNull, WrongNargs
-	}
-	fmt.Printf("\n")
-	goon.Dump(args[0])
 	return SexpNull, nil
 }
 
@@ -1051,9 +839,12 @@ func SexpToGoStructs(
 
 /*
 if accessing unexported fields, we'll recover from
-   panic: reflect.Value.Interface: cannot return value obtained from unexported field or method
+
+	panic: reflect.Value.Interface: cannot return value obtained from unexported field or method
+
 and use this technique
-   https://stackoverflow.com/questions/42664837/access-unexported-fields-in-golang-reflect
+
+	https://stackoverflow.com/questions/42664837/access-unexported-fields-in-golang-reflect
 */
 func unexportHelper(ptrFld *reflect.Value, fld *reflect.Value) (r *reflect.Value, needed bool) {
 	defer func() {
