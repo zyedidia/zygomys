@@ -1,4 +1,0 @@
-type Sexp interface {
-	SexpString(indent int) string
-	Type() *RegisteredType
-}

@@ -1,4 +1,0 @@
-
-type Flyer interface {
-	Fly(ev *Weather) (s string, err error)
-}

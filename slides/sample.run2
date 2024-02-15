@@ -1,3 +1,0 @@
-for k, v := range h {
-  s += string(k) + "-maps->" + string(v) + "\n"
-}

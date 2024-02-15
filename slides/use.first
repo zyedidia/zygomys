@@ -1,5 +1,0 @@
-zygo> (first [5 6 7])
-5
-zygo> (first (list "hi" "there"))
-"hi"
-zygo> 
